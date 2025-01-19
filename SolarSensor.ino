@@ -25,6 +25,9 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
 
+  Serial.print("SSID:");
+  Serial.println(ssid);
+
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
@@ -34,16 +37,24 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  printLocalTime();
+  char *now = getLocalTime();
+  // printf("%s\n", now);
 }
 
 
-void printLocalTime(){
+char *getLocalTime(){
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    return;
-  }
+
+  // char *ret = (char *) malloc(sizeof(char) * 20); // allocate memory for the string
+  // if(!getLocalTime(&timeinfo)){
+  //   Serial.println("Failed to obtain time");
+  //   return;
+  // }
+
+  char retTime[20];
+
+  // 2025.01.01 15:15:45
+
   // Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
   // Serial.print("Day of week: ");
   // Serial.println(&timeinfo, "%A");
@@ -62,14 +73,27 @@ void printLocalTime(){
   // Serial.print("Second: ");
   // Serial.println(&timeinfo, "%S");
 
-  Serial.println("Time variables");
-  char timeHour[3];
-  strftime(timeHour,3, "%H", &timeinfo);
-  Serial.println(timeHour);
-  char timeWeekDay[10];
-  strftime(timeWeekDay,10, "%A", &timeinfo);
-  Serial.println(timeWeekDay);
-  Serial.println();
+
+  // Serial.println("Time variables");
+  char timeYear[4];
+  strftime(timeYear, 4, "%Y", &timeinfo);
+  
+  strcat(retTime, timeYear);
+
+  // char timeHour[3];
+  // strftime(timeHour,3, "%H", &timeinfo);
+
+
+
+
+  // Serial.println(timeHour);
+  // char timeWeekDay[10];
+  // strftime(timeWeekDay,10, "%A", &timeinfo);
+  // Serial.println(timeWeekDay);
+  // Serial.println();
+
+
+  return retTime;
 }
 
 
