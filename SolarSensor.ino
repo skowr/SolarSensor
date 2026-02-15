@@ -1,15 +1,31 @@
+// ##############################################
+// #
+// # Solar Sensor - SKR v0.1
+// #
+// # last update 15.02.2026
+// #
+// ##############################################
+
+
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <time.h>
+#include <ESP8266HTTPClient.h>
 #include "secrets.h"
 
 int sensor = 0;
 int pinLed = 2;
-const int pinAnalog = A0;
-const int readPulse = 1000; // miliseconds
+const int PIN_ANALOG = A0;
+const int READ_PULSE = 30000; // Read / push waiting time in miliseconds
 
+const char* URL_TEMPLATE = "http://192.168.2.129:9000/exec?query=INSERT%20INTO%20solar_dev_measure%20%28measuretime%2C%20voltage%29%20VALUES%20%28now%28%29%2C{VOLT}%29";
+
+HTTPClient httpClient;
+WiFiClient wifiClient; 
 WiFiUDP ntpUDP;
+String url;
 NTPClient timeClient(ntpUDP, NTP_SERVER);
 
 void blink() {
@@ -21,14 +37,9 @@ void blink() {
 
 String getFormattedTimestamp(unsigned long long epochTime) {
 
-  Serial.println(epochTime);
-
   struct tm *ptm = gmtime((time_t *)&epochTime);
 
   int currentYear = ptm->tm_year + 1900;
-  // Serial.print(F("Year: "));
-  // Serial.println(currentYear);
-
 
   char buffer[30];
   sprintf(buffer, "%04d-%02d-%02d %02d:%02d:%02d",
@@ -44,10 +55,10 @@ String getFormattedTimestamp(unsigned long long epochTime) {
 void setup() {
 
   // Configuration
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   pinMode(pinLed, OUTPUT);
-  pinMode(pinAnalog, INPUT);
+  pinMode(PIN_ANALOG, INPUT);
 
 
   // Wifi connect
@@ -58,7 +69,6 @@ void setup() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-
   Serial.print(F("Connecting to WiFi."));
   while (WiFi.status() != WL_CONNECTED) {
     delay(100);
@@ -68,48 +78,73 @@ void setup() {
   Serial.print(F("\nConnected to WiFi. IP: "));
   Serial.println(WiFi.localIP());
 
-  // Connect to NTP
+  // Connect to NTP to get local time
   Serial.println(F("Connecting to NTP..."));
-
-
 
   timeClient.begin();
   timeClient.setTimeOffset(NTP_TIME_OFFSET);
   timeClient.update();
 
+  // String formattedTime = timeClient.getFormattedTime();
+  // Serial.print(F("NTP Connected. "));
+  // Serial.println(formattedTime);
+
+  String currentTime = getFormattedTimestamp(timeClient.getEpochTime());
+
+  Serial.print(F("Current time: "));
+  Serial.println(currentTime);
 
 
-  String formattedTime = timeClient.getFormattedTime();
-  Serial.print(F("NTP Connected. Time: "));
-  Serial.println(formattedTime);
+  // Check free memory of the device
+  size_t freeHeap = ESP.getFreeHeap();
+  Serial.print(F("Free Heap (SRAM) Memory: "));
+  Serial.println(freeHeap);
 
-  struct tm timeinfo;
-  getLocalTime(&timeinfo);
-  Serial.print(F("Year : "));
-  Serial.println(timeinfo.tm_year);
-
-
-  String timestamp = getFormattedTimestamp(timeClient.getEpochTime());
-
-  Serial.print(F("Timestamp: "));
-  Serial.println(timestamp);
 }
-
 
 void loop() {
 
-  String timestamp = getFormattedTimestamp(timeClient.getEpochTime());
+  // Read sensor
+  sensor = analogRead(PIN_ANALOG);
+  String formattedtime = getFormattedTimestamp(timeClient.getEpochTime());
 
-  sensor = analogRead(pinAnalog);
-  Serial.print(timestamp);
-  Serial.print(": ");
+  // Print result to console
+  unsigned long epochTime;
+  epochTime = timeClient.getEpochTime();
+  String timestamp = String(epochTime);
+
+  Serial.print(formattedtime);  
+  Serial.print(" - ");
   Serial.println(sensor);
-  
-  
-  
-  delay(readPulse);
+
+  // if (WiFi.status() != WL_CONNECTED) {
+  //   Serial.println("Wi‑Fi lost – trying to reconnect");
+  //   WiFi.reconnect();
+  //   delay(2000);
+  //   return;
+  // }
+
+
+  // Push message to QuestDB
+  url = URL_TEMPLATE;
+  url.replace("{VOLT}", String(sensor));
+  Serial.println(url);
+
+  httpClient.begin(wifiClient, url);
+  int httpCode = httpClient.GET();
+
+  if (httpCode > 0) {        
+    Serial.printf("[HTTP] GET code: %d\n", httpCode);
+    String payload = httpClient.getString();   
+    Serial.print("[HTTP] Response: ");
+    Serial.println(payload);
+  } else {                   
+    Serial.printf("[HTTP] GET... failed, error: %s\n", httpClient.errorToString(httpCode).c_str());
+  }
+
+  httpClient.end(); 
+
+  delay(READ_PULSE);
+  blink();
 }
 
-// REF
-// https://microdigisoft.com/esp8266-nodemcu-ntp-server-create-date-and-time-with-using-arduino-ide/
-// https://microdigisoft.com/create-date-and-time-with-ntp-server-using-esp8266-wifi-module/
