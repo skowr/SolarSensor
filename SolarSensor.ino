@@ -1,6 +1,6 @@
 // ##############################################
 // #
-// # Solar Sensor - SKR v0.1
+// # Solar Sensor - SKR v0.2
 // #
 // # last update 20.02.2026
 // #
@@ -24,7 +24,12 @@ const int AVERAGE_COUNT = 10;
 
 const int NTP_TIME_OFFSET = 3600;
 
-// const char* URL_TEMPLATE = "http://192.168.1.1:9000/exec?query=INSERT%20INTO%20solar_dev_measure%20%28measuretime%2C%20voltage%29%20VALUES%20%28now%28%29%2C{VOLT}%29";
+// Secrets file reflection
+
+// const char* WIFI_SSID      = "SSID"
+// const char* WIFI_PASSWORD  = "PASS"
+// const char* NTP_SERVER     = "pl.pool.ntp.org"
+// const char* URL_TEMPLATE   = "http://192.168.1.1:9000/exec?query=INSERT%20INTO%20solar_dev_measure%20%28measuretime%2C%20voltage%29%20VALUES%20%28now%28%29%2C{VOLT}%29";
 
 int sensor = 0;
 HTTPClient httpClient;
@@ -41,6 +46,7 @@ void blink() {
     digitalWrite(pinLed, LOW);
     delay(50);
   }
+  digitalWrite(pinLed, HIGH);
 }
 
 String getFormattedTimestamp(unsigned long long epochTime) {
@@ -64,10 +70,8 @@ void setup() {
 
   // Configuration
   Serial.begin(9600);
-
   pinMode(pinLed, OUTPUT);
   pinMode(PIN_ANALOG, INPUT);
-
 
   // Wifi connect
   delay(500);
@@ -83,7 +87,7 @@ void setup() {
     Serial.print(".");
   }
 
-  Serial.print(F("\nConnected to WiFi. IP: "));
+  Serial.print(F("\nConnected to WiFi with IP: "));
   Serial.println(WiFi.localIP());
 
   // Connect to NTP to get local time
@@ -93,22 +97,19 @@ void setup() {
   timeClient.setTimeOffset(NTP_TIME_OFFSET);
   timeClient.update();
 
-  // String formattedTime = timeClient.getFormattedTime();
-  // Serial.print(F("NTP Connected. "));
-  // Serial.println(formattedTime);
 
   String currentTime = getFormattedTimestamp(timeClient.getEpochTime());
 
-  Serial.print(F("Current time: "));
+  Serial.print(F("Current NTP time: "));
   Serial.println(currentTime);
-
 
   // Check free memory of the device
   size_t freeHeap = ESP.getFreeHeap();
   Serial.print(F("Free Heap (SRAM) Memory: "));
   Serial.println(freeHeap);
 
-  digitalWrite(pinLed, LOW);
+  // LED off
+  digitalWrite(pinLed, HIGH);
 
 }
 
@@ -121,32 +122,22 @@ void loop() {
   sensor = sensor / AVERAGE_COUNT * 3.3 / 1024 * 1000;
 
 
-  String formattedtime = getFormattedTimestamp(timeClient.getEpochTime());
+  // Print measure to console
 
-  // Print result to console
-  unsigned long epochTime;
-  epochTime = timeClient.getEpochTime();
-  String timestamp = String(epochTime);
+  String formattedtime = getFormattedTimestamp(timeClient.getEpochTime());
+  // unsigned long epochTime;
+  // epochTime = timeClient.getEpochTime();
+  // String timestamp = String(epochTime);
 
   Serial.print(formattedtime);  
   Serial.print(" - ");
   Serial.print(sensor);
   Serial.println(" [mV]");
 
-  // if (WiFi.status() != WL_CONNECTED) {
-  //   Serial.println("Wi‑Fi lost – trying to reconnect");
-  //   WiFi.reconnect();
-  //   delay(2000);
-  //   return;
-  // }
-
-
   // Push message to QuestDB
   url = URL_TEMPLATE;
   url.replace("{VOLT}", String(sensor));
   Serial.println(url);
-
-  /*
 
   httpClient.begin(wifiClient, url);
   
@@ -162,9 +153,21 @@ void loop() {
   }
 
   httpClient.end(); 
-*/
 
+  // Finalize
   delay(READ_PULSE);
   blink();
+
+  // Check WiFi status
+
+  // if (WiFi.status() != WL_CONNECTED) {
+  //   Serial.println("Wi‑Fi lost – trying to reconnect");
+  //   WiFi.reconnect();
+  //   delay(2000);
+  //   blink();
+  //   return;
+  // }
+
+
 }
 
