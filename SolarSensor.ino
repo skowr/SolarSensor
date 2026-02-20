@@ -2,7 +2,7 @@
 // #
 // # Solar Sensor - SKR v0.1
 // #
-// # last update 15.02.2026
+// # last update 20.02.2026
 // #
 // ##############################################
 
@@ -15,13 +15,18 @@
 #include <ESP8266HTTPClient.h>
 #include "secrets.h"
 
-int sensor = 0;
-int pinLed = 2;
+const int pinLed = 2;
 const int PIN_ANALOG = A0;
-const int READ_PULSE = 30000; // Read / push waiting time in miliseconds
+const int READ_PULSE = 600000; // Read / push waiting time in miliseconds
+// const int READ_PULSE = 2000;
+const int AVERAGE_PULSE = 250;
+const int AVERAGE_COUNT = 10;
 
-const char* URL_TEMPLATE = "http://192.168.2.129:9000/exec?query=INSERT%20INTO%20solar_dev_measure%20%28measuretime%2C%20voltage%29%20VALUES%20%28now%28%29%2C{VOLT}%29";
+const int NTP_TIME_OFFSET = 3600;
 
+// const char* URL_TEMPLATE = "http://192.168.1.1:9000/exec?query=INSERT%20INTO%20solar_dev_measure%20%28measuretime%2C%20voltage%29%20VALUES%20%28now%28%29%2C{VOLT}%29";
+
+int sensor = 0;
 HTTPClient httpClient;
 WiFiClient wifiClient; 
 WiFiUDP ntpUDP;
@@ -29,10 +34,13 @@ String url;
 NTPClient timeClient(ntpUDP, NTP_SERVER);
 
 void blink() {
-  digitalWrite(pinLed, HIGH);
-  delay(100);
-  digitalWrite(pinLed, LOW);
-  delay(100);
+  for(int i = 0; i < 5; i++)
+  {
+    digitalWrite(pinLed, HIGH);
+    delay(50);
+    digitalWrite(pinLed, LOW);
+    delay(50);
+  }
 }
 
 String getFormattedTimestamp(unsigned long long epochTime) {
@@ -100,12 +108,19 @@ void setup() {
   Serial.print(F("Free Heap (SRAM) Memory: "));
   Serial.println(freeHeap);
 
+  digitalWrite(pinLed, LOW);
+
 }
 
 void loop() {
 
   // Read sensor
-  sensor = analogRead(PIN_ANALOG);
+  sensor = 0;
+  for (int i = 0; i < AVERAGE_COUNT; i++)
+    sensor += analogRead(PIN_ANALOG);
+  sensor = sensor / AVERAGE_COUNT * 3.3 / 1024 * 1000;
+
+
   String formattedtime = getFormattedTimestamp(timeClient.getEpochTime());
 
   // Print result to console
@@ -115,7 +130,8 @@ void loop() {
 
   Serial.print(formattedtime);  
   Serial.print(" - ");
-  Serial.println(sensor);
+  Serial.print(sensor);
+  Serial.println(" [mV]");
 
   // if (WiFi.status() != WL_CONNECTED) {
   //   Serial.println("Wi‑Fi lost – trying to reconnect");
@@ -130,7 +146,10 @@ void loop() {
   url.replace("{VOLT}", String(sensor));
   Serial.println(url);
 
+  /*
+
   httpClient.begin(wifiClient, url);
+  
   int httpCode = httpClient.GET();
 
   if (httpCode > 0) {        
@@ -143,6 +162,7 @@ void loop() {
   }
 
   httpClient.end(); 
+*/
 
   delay(READ_PULSE);
   blink();
