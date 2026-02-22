@@ -1,8 +1,8 @@
 // ##############################################
 // #
-// # Solar Sensor - SKR v0.2
+// # Solar Sensor - SKR v0.3
 // #
-// # last update 20.02.2026
+// # last update 22.02.2026
 // #
 // ##############################################
 
@@ -15,14 +15,18 @@
 #include <ESP8266HTTPClient.h>
 #include "secrets.h"
 
+
 const int pinLed = 2;
 const int PIN_ANALOG = A0;
 const int READ_PULSE = 600000; // Read / push waiting time in miliseconds
 // const int READ_PULSE = 2000;
 const int AVERAGE_PULSE = 250;
 const int AVERAGE_COUNT = 10;
+const float CALIBRATION = 0.91;
 
 const int NTP_TIME_OFFSET = 3600;
+
+const bool DEBUG = true;
 
 // Secrets file reflection
 
@@ -38,15 +42,19 @@ WiFiUDP ntpUDP;
 String url;
 NTPClient timeClient(ntpUDP, NTP_SERVER);
 
-void blink() {
+void blink(int delayTime) {
   for(int i = 0; i < 5; i++)
   {
     digitalWrite(pinLed, HIGH);
-    delay(50);
+    delay(delayTime);
     digitalWrite(pinLed, LOW);
-    delay(50);
+    delay(delayTime);
   }
   digitalWrite(pinLed, HIGH);
+}
+
+void blink() {
+  blink(50);
 }
 
 String getFormattedTimestamp(unsigned long long epochTime) {
@@ -63,7 +71,26 @@ String getFormattedTimestamp(unsigned long long epochTime) {
           ptm->tm_hour,
           ptm->tm_min,
           ptm->tm_sec);
+
   return String(buffer);
+}
+
+void log(String message)
+{
+  if (DEBUG)
+  {
+    if (timeClient.isTimeSet())
+    {
+      String formattedtime = getFormattedTimestamp(timeClient.getEpochTime());
+      Serial.printf("%s - ", formattedtime.c_str());  
+    }
+    else
+    {
+      Serial.print("******************* - ");
+    }
+
+    Serial.print(message);
+  }
 }
 
 void setup() {
@@ -75,38 +102,35 @@ void setup() {
 
   // Wifi connect
   delay(500);
-  Serial.print(F("\n\nSSID: "));
-  Serial.println(WIFI_SSID);
+
+  log("*** SOLAR SENSOR SKR ***\n");
+  log("SSID: " + String(WIFI_SSID) + "\n");
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-  Serial.print(F("Connecting to WiFi."));
+  log("Connecting to WiFi \n");
   while (WiFi.status() != WL_CONNECTED) {
-    delay(100);
-    Serial.print(".");
+    blink();
   }
 
-  Serial.print(F("\nConnected to WiFi with IP: "));
-  Serial.println(WiFi.localIP());
+  log("Connected to WiFi with IP: " + WiFi.localIP().toString() + "\n");
 
   // Connect to NTP to get local time
-  Serial.println(F("Connecting to NTP..."));
+  log(F("Connecting to NTP...\n"));
 
   timeClient.begin();
   timeClient.setTimeOffset(NTP_TIME_OFFSET);
   timeClient.update();
 
+  
 
   String currentTime = getFormattedTimestamp(timeClient.getEpochTime());
-
-  Serial.print(F("Current NTP time: "));
-  Serial.println(currentTime);
+  log("Current NTP time: " + currentTime + "\n");
 
   // Check free memory of the device
   size_t freeHeap = ESP.getFreeHeap();
-  Serial.print(F("Free Heap (SRAM) Memory: "));
-  Serial.println(freeHeap);
+  log("Free Heap (SRAM) Memory: " + String(freeHeap) + "[bytes]\n");
 
   // LED off
   digitalWrite(pinLed, HIGH);
@@ -119,35 +143,26 @@ void loop() {
   sensor = 0;
   for (int i = 0; i < AVERAGE_COUNT; i++)
     sensor += analogRead(PIN_ANALOG);
-  sensor = sensor / AVERAGE_COUNT * 3.3 / 1024 * 1000;
+  sensor = sensor / AVERAGE_COUNT * 3.3 / 1024 * 1000 * CALIBRATION;
 
 
   // Print measure to console
 
-  String formattedtime = getFormattedTimestamp(timeClient.getEpochTime());
-  // unsigned long epochTime;
-  // epochTime = timeClient.getEpochTime();
-  // String timestamp = String(epochTime);
-
-  Serial.print(formattedtime);  
-  Serial.print(" - ");
-  Serial.print(sensor);
-  Serial.println(" [mV]");
+  log("Measured voltage: " + String(sensor) + " [mV]\n");
 
   // Push message to QuestDB
   url = URL_TEMPLATE;
   url.replace("{VOLT}", String(sensor));
-  Serial.println(url);
-
-  httpClient.begin(wifiClient, url);
+  log("Calling URL: " + url + "\n");
   
+
+  httpClient.begin(wifiClient, url);  
   int httpCode = httpClient.GET();
 
   if (httpCode > 0) {        
-    Serial.printf("[HTTP] GET code: %d\n", httpCode);
+    log("HTTP GET code: " + String(httpCode) + "\n");
     String payload = httpClient.getString();   
-    Serial.print("[HTTP] Response: ");
-    Serial.println(payload);
+    log("HTTP response: " + payload + "\n");
   } else {                   
     Serial.printf("[HTTP] GET... failed, error: %s\n", httpClient.errorToString(httpCode).c_str());
   }
@@ -155,8 +170,8 @@ void loop() {
   httpClient.end(); 
 
   // Finalize
+  blink(100);
   delay(READ_PULSE);
-  blink();
 
   // Check WiFi status
 
